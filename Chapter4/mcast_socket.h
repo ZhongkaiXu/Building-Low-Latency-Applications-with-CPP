@@ -11,7 +11,7 @@ namespace Common {
   constexpr size_t McastBufferSize = 64 * 1024 * 1024;
 
   struct McastSocket {
-    McastSocket(Logger &logger)
+    explicit McastSocket(Logger &logger)
         : logger_(logger) {
       outbound_data_.resize(McastBufferSize);
       inbound_data_.resize(McastBufferSize);
@@ -44,6 +44,7 @@ namespace Common {
     /// Function wrapper for the method to call when data is read.
     std::function<void(McastSocket *s)> recv_callback_ = nullptr;
 
+    std::string iface_;
     std::string time_str_;
     Logger &logger_;
   };

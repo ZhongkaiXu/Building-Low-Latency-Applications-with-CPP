@@ -1,47 +1,60 @@
-#include "thread_utils.h"
 #include "lf_queue.h"
+#include "thread_utils.h"
+
+#include <atomic>
 
 struct MyStruct {
-  int d_[3];
+    int d_[3];
 };
 
 using namespace Common;
 
-auto consumeFunction(LFQueue<MyStruct>* lfq) {
-  using namespace std::literals::chrono_literals;
-  std::this_thread::sleep_for(5s);
+void consumeFunction(LFQueue<MyStruct>* lfq, const std::atomic<bool>* producer_done)
+{
+    while (!producer_done->load(std::memory_order_acquire) || !lfq->empty()) {
+        if (const auto* next = lfq->getNextToRead()) {
+            const auto value = *next;
+            lfq->updateReadIndex();
 
-  while(lfq->size()) {
-    const auto d = lfq->getNextToRead();
-    lfq->updateReadIndex();
+            std::cout << "consumeFunction read elem:" << value.d_[0] << "," << value.d_[1] << "," << value.d_[2] << " lfq-size:" << lfq->size() << std::endl;
+        } else {
+            std::this_thread::yield();
+        }
+    }
 
-    std::cout << "consumeFunction read elem:" << d->d_[0] << "," << d->d_[1] << "," << d->d_[2] << " lfq-size:" << lfq->size() << std::endl;
-
-    std::this_thread::sleep_for(1s);
-  }
-
-  std::cout << "consumeFunction exiting." << std::endl;
+    std::cout << "consumeFunction exiting." << std::endl;
 }
 
-int main(int, char **) {
-  LFQueue<MyStruct> lfq(20);
+int main(int, char**)
+{
+    LFQueue<MyStruct> lfq(20);
+    std::atomic<bool> producer_done { false };
 
-  auto ct = createAndStartThread(-1, "", consumeFunction, &lfq);
+    auto ct = createAndStartThread(-1, "", consumeFunction, &lfq, &producer_done);
 
-  for(auto i = 0; i < 50; ++i) {
-    const MyStruct d{i, i * 10, i * 100};
-    *(lfq.getNextToWriteTo()) = d;
-    lfq.updateWriteIndex();
+    for (auto i = 0; i < 50; ++i) {
+        const MyStruct d { i, i * 10, i * 100 };
 
-    std::cout << "main constructed elem:" << d.d_[0] << "," << d.d_[1] << "," << d.d_[2] << " lfq-size:" << lfq.size() << std::endl;
+        auto* next = lfq.getNextToWriteTo();
+        while (next == nullptr) {
+            std::this_thread::yield();
+            next = lfq.getNextToWriteTo();
+        }
 
-    using namespace std::literals::chrono_literals;
-    std::this_thread::sleep_for(1s);
-  }
+        *next = d;
+        lfq.updateWriteIndex();
 
-  ct->join();
+        std::cout << "main constructed elem:" << d.d_[0] << "," << d.d_[1] << "," << d.d_[2] << " lfq-size:" << lfq.size() << std::endl;
 
-  std::cout << "main exiting." << std::endl;
+        // use 1s 1ms
+        using namespace std::literals::chrono_literals;
+        std::this_thread::sleep_for(1s);
+    }
 
-  return 0;
+    producer_done.store(true, std::memory_order_release);
+    ct.join();
+
+    std::cout << "main exiting." << std::endl;
+
+    return 0;
 }

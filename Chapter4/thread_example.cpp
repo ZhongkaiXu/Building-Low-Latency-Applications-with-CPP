@@ -21,8 +21,8 @@ int main(int, char **) {
   auto t2 = createAndStartThread(1, "dummyFunction2", dummyFunction, 15, 51, true);
 
   std::cout << "main waiting for threads to be done." << std::endl;
-  t1->join();
-  t2->join();
+  t1.join();
+  t2.join();
   std::cout << "main exiting." << std::endl;
 
   return 0;
